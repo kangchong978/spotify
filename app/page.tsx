@@ -482,12 +482,12 @@ export default function Home() {
             </ul>
           </>
         );
-      case "Recommanded Artists": // user top items
+      case "Recommended Artists": // user top items
         if (!recommendedArtists) return (<></>);
 
         return (
           <>
-            <p style={{ fontSize: 40, fontWeight: 1000 }}> {'Recommanded artists'}</p>
+            <p style={{ fontSize: 40, fontWeight: 1000 }}> {'Recommended artists'}</p>
             <br />
             <ul className="list-none p-0">
               {recommendedArtists.map((a, index) => {
@@ -803,8 +803,8 @@ export default function Home() {
             </Link>
           </NavbarItem>
           <NavbarItem>
-            <Link href="#" onClick={() => setSelectedItem("Recommanded Artists")} style={(selectedItem == 'Recommanded Artists') ? { color: '#1db954', fontWeight: '800' } : {}}>
-              Recommanded Artists
+            <Link href="#" onClick={() => setSelectedItem("Recommended Artists")} style={(selectedItem == 'Recommended Artists') ? { color: '#1db954', fontWeight: '800' } : {}}>
+              Recommended Artists
             </Link>
           </NavbarItem>
           <NavbarItem>
