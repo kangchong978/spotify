@@ -18,6 +18,9 @@ export default function Home() {
   const [newAlbums, setNewAlbums] = useState<Array<SpotifyAlbum>>();
   const [featuredPlayLists, setFeaturedPlayLists] = useState<SpotifyPlaylists>();
   const [recommendedArtists, setRecommendedArtists] = useState<SpotifyArtist[]>();
+  const [favoritesAlbums, setFavoritesAlbums] = useState<SpotifyFavorite[]>();
+  const [favoritesPlaylists, setFavoritesPlaylists] = useState<SpotifyFavorite[]>();
+  const [favoritesArtists, setFavoritesArtists] = useState<SpotifyFavorite[]>();
 
   const clientId = "06ee099d9e294e14ada8c5975be4e183";
   const redirectUri = "http://localhost:3000/"; // This should match the URI registered in Spotify Dashboard
@@ -56,56 +59,152 @@ export default function Home() {
     localStorage.setItem("spotify_access_token", token);
   };
 
-  const handleLoginRedirect = () => {
+  const handleLoginRedirect = async () => {
     const token = extractTokenFromUrl();
     if (token) {
-      console.log(token)
-      const payload = { 'access_token': token };
+      saveToken(token);
+      var userInfo = await getSpotifyUserInfo();
+      const payload = { 'accessToken': token, ...userInfo };
 
       // Clear the hash
       window.location.hash = "";
 
-      saveToken(token);
-
-      // Construct the request options
       const requestOptions = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       };
 
-      // Send the POST request
       fetch('http://localhost:8000/login', requestOptions)
         .then(response => response.json())
-        .then(data => console.log(data))
+        .then(data => setSpotifyUser(data))
+        .catch(error => console.error('Error:', error));
+    } else if (spotify_access_token) {
+      const payload = { 'accessToken': spotify_access_token };
+      const requestOptions = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      };
+
+      fetch('http://localhost:8000/login_token', requestOptions)
+        .then(response => response.json())
+        .then(data => { setSpotifyUser(data) })
         .catch(error => console.error('Error:', error));
     }
   };
-  const fetchSpotifyUserInfo = async () => {
 
-    if (spotify_access_token) {
-      try {
-        const response = await fetch('https://api.spotify.com/v1/me', {
-          headers: {
-            'Authorization': 'Bearer ' + spotify_access_token,
-            'Content-Type': 'application/json'
-          }
-        });
+  const retriveUserFavorites = (data: SpotifyFavorite[]) => {
+    var result_A: SpotifyFavorite[] = data.filter((v) => v['type'] == 'album');
+    setFavoritesAlbums(result_A);
+    var result_B: SpotifyFavorite[] = data.filter((v) => v['type'] == 'playlist');
+    setFavoritesPlaylists(result_B);
+    var result_C: SpotifyFavorite[] = data.filter((v) => v['type'] == 'artist');
+    setFavoritesArtists(result_C);
+  }
 
-        if (!response.ok) {
-          throw new Error('Request failed: ' + response.status);
-        }
+  const getUserFavorites = async () => {
+    if (spotifyUser) {
+      const payload = { 'user_id': spotifyUser.id };
 
-        const data = await response.json();
-        // console.log(data); // Here you have the user's Spotify profile information
-        setSpotifyUser(data);
-      } catch (error) {
-        console.error('Error fetching Spotify user info:', error);
-      }
-    } else {
-      console.log('No Spotify access token found.');
+      const requestOptions = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      };
+
+      fetch('http://localhost:8000/get_user_favorites', requestOptions)
+        .then(response => response.json())
+        .then(data => { retriveUserFavorites(data) })
+        .catch(error => console.error('Error:', error));
     }
   };
+
+  const addUserFavorite = async (type: string, data: object, data_id: string) => {
+    if (spotifyUser) {
+
+      const payload = { 'user_id': spotifyUser.id, 'type': type, 'data': data, 'data_id': data_id };
+
+      const requestOptions = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      };
+
+      fetch('http://localhost:8000/add_user_favorite', requestOptions)
+        .then(response => response.json())
+        // .then(data => console.log(data))
+        .catch(error => console.error('Error:', error));
+
+      switch (type) {
+        case 'album':
+          setFavoritesAlbums([...favoritesAlbums ?? [], payload]);
+
+          break;
+        case 'playlist':
+          setFavoritesPlaylists([...favoritesPlaylists ?? [], payload]);
+
+          break;
+        case 'artist':
+          setFavoritesArtists([...favoritesArtists ?? [], payload]);
+          break;
+        default:
+          break;
+      }
+    }
+  };
+
+  const removeUserFavorite = async (type: string, data_id: string) => {
+    if (spotifyUser) {
+      const payload = { 'user_id': spotifyUser.id, 'data_id': data_id };
+
+      const requestOptions = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      };
+
+      fetch('http://localhost:8000/remove_user_favorite', requestOptions)
+        .then(response => response.json())
+        // .then(data => console.log(data))
+        .catch(error => console.error('Error:', error));
+      switch (type) {
+        case 'album':
+          setFavoritesAlbums([...favoritesAlbums ?? []].filter((e) => e.data_id != data_id));
+          break;
+        case 'playlist':
+          setFavoritesPlaylists([...favoritesPlaylists ?? []].filter((e) => e.data_id != data_id));
+          break;
+        case 'artist':
+          setFavoritesArtists([...favoritesArtists ?? []].filter((e) => e.data_id != data_id));
+          break;
+        default:
+          break;
+      }
+    }
+  };
+
+
+  const getSpotifyUserInfo = async () => {
+    try {
+      const response = await fetch('https://api.spotify.com/v1/me', {
+        headers: {
+          'Authorization': 'Bearer ' + spotify_access_token,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Request failed: ' + response.status);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error fetching Spotify user info:', error);
+    }
+  };
+
 
   const fetchNewReleaseAlbums = async () => {
     const url = 'https://api.spotify.com/v1/browse/new-releases';
@@ -195,7 +294,7 @@ export default function Home() {
     const followed_artists: SpotifyArtist[] = await getFollowedArtists();
     const followed_artists_ids = followed_artists.map(e => e.id);
     var recommendedArtistsResult: SpotifyArtist[] = [];
-    console.log(`Here are the followed artists:`,);
+    // console.log(`Here are the followed artists:`,);
     for (let index = 0; index < followed_artists_ids.length; index++) {
       const artists_id = followed_artists_ids[index];
       const url = `https://api.spotify.com/v1/artists/${artists_id}/related-artists`;
@@ -214,7 +313,7 @@ export default function Home() {
           throw new Error('Network response was not ok');
         }
         const data: SpotifyArtistsData = await response.json();
-        console.log('Recommended Artists:', data);
+        // console.log('Recommended Artists:', data);
         recommendedArtistsResult = [...recommendedArtistsResult, ...data.artists];
       } catch (error) {
         console.error('There was a problem with your fetch operation:', error);
@@ -225,12 +324,18 @@ export default function Home() {
   };
 
   useEffect(() => {
-    loadAccessToken();
-    fetchSpotifyUserInfo();
+    initialize();
+  }, []);
+
+  const initialize = async () => {
+    await loadAccessToken();
     handleLoginRedirect();
 
+  }
 
-  }, []);
+  useEffect(() => {
+    getUserFavorites();
+  }, [spotifyUser]);
 
   useEffect(() => {
     if (!newAlbums)
@@ -286,10 +391,10 @@ export default function Home() {
                       <SpotifyLogo></SpotifyLogo>
 
                     </Button>
-                    {(false) ?
+                    {!(favoritesAlbums && favoritesAlbums.some((e) => e.data_id == a.id)) ?
                       <Tooltip color="foreground" content={`Add in Bookmark`}>
                         <Button onPress={() => {
-
+                          addUserFavorite(a.type, a, a.id)
                         }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
                           <BookmarksDisabled></BookmarksDisabled>
 
@@ -297,7 +402,7 @@ export default function Home() {
                       </Tooltip> :
                       <Tooltip color="foreground" content={`Remove from Bookmark`}>
                         <Button onPress={() => {
-
+                          removeUserFavorite(a.type, a.id)
                         }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
                           <Bookmarks></Bookmarks>
 
@@ -341,10 +446,10 @@ export default function Home() {
                       <SpotifyLogo></SpotifyLogo>
 
                     </Button>
-                    {(false) ?
+                    {!(favoritesPlaylists && favoritesPlaylists.some((e) => e.data_id == a.id)) ?
                       <Tooltip color="foreground" content={`Add in Bookmark`}>
                         <Button onPress={() => {
-
+                          addUserFavorite(a.type, a, a.id)
                         }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
                           <BookmarksDisabled></BookmarksDisabled>
 
@@ -352,7 +457,7 @@ export default function Home() {
                       </Tooltip> :
                       <Tooltip color="foreground" content={`Remove from Bookmark`}>
                         <Button onPress={() => {
-
+                          removeUserFavorite(a.type, a.id)
                         }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
                           <Bookmarks></Bookmarks>
 
@@ -405,10 +510,10 @@ export default function Home() {
                       </Button>
                     </Tooltip>
 
-                    {(false) ?
+                    {!(favoritesArtists && favoritesArtists.some((e) => e.data_id == a.id)) ?
                       <Tooltip color="foreground" content={`Add in Bookmark`}>
                         <Button onPress={() => {
-
+                          addUserFavorite(a.type, a, a.id);
                         }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
                           <BookmarksDisabled></BookmarksDisabled>
 
@@ -416,7 +521,7 @@ export default function Home() {
                       </Tooltip> :
                       <Tooltip color="foreground" content={`Remove from Bookmark`}>
                         <Button onPress={() => {
-
+                          removeUserFavorite(a.type, a.id);
                         }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
                           <Bookmarks></Bookmarks>
 
@@ -437,10 +542,166 @@ export default function Home() {
             <div>
               <p style={{ fontSize: 40, fontWeight: 1000 }}> {'Saved Albums'}</p>
               <br />
+              {favoritesAlbums && favoritesAlbums.map((aa: SpotifyFavorite, index) => {
+                var a: SpotifyAlbum = aa.data;
+                var album_image = '';
+                var artists_name = '';
+                if (a.images.length > 0) {
+                  var image = a.images[0];
+                  if (image) {
+                    album_image = image.url;
+                  }
+                }
+
+                if (a.artists.length > 0) {
+                  var artists = a.artists;
+
+                  artists_name = artists.map(c => c.name).join(', ').toString();
+
+                }
+
+
+                return (
+                  <li key={index} className="row flex items-center gap-4 mb-4">
+                    <p style={{ width: 40, fontSize: 20 }}>{index + 1}</p>
+                    <Image style={{ borderRadius: 10 }} src={album_image} alt="" width={100} height={100} quality={100} />
+                    <div>
+                      <p style={{ fontSize: 20 }}>{a.name}</p>
+                      <p style={{ fontSize: 15 }}>{artists_name}</p>
+                    </div>
+                    <Button onPress={() => {
+                      window.open(a.external_urls.spotify, '_blank', 'noopener,noreferrer')
+                    }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#1db954' }}>
+                      <SpotifyLogo></SpotifyLogo>
+
+                    </Button>
+                    {!(favoritesAlbums && favoritesAlbums.some((e) => e.data_id == a.id)) ?
+                      <Tooltip color="foreground" content={`Add in Bookmark`}>
+                        <Button onPress={() => {
+                          addUserFavorite(a.type, a, a.id)
+                        }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
+                          <BookmarksDisabled></BookmarksDisabled>
+
+                        </Button>
+                      </Tooltip> :
+                      <Tooltip color="foreground" content={`Remove from Bookmark`}>
+                        <Button onPress={() => {
+                          removeUserFavorite(a.type, a.id)
+                        }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
+                          <Bookmarks></Bookmarks>
+
+                        </Button>
+                      </Tooltip>
+                    }
+                  </li>
+                )
+              })}
               <p style={{ fontSize: 40, fontWeight: 1000 }}> {'Saved Playlist'}</p>
               <br />
+              {favoritesPlaylists && favoritesPlaylists.map((aa: SpotifyFavorite, index) => {
+                var a: SpotifyPlaylist = aa.data;
+                var album_image = '';
+                if (a.images.length > 0) {
+                  var image = a.images[0];
+                  if (image) {
+                    album_image = image.url;
+                  }
+                }
+
+                return (
+                  <li key={index} className="row flex items-center gap-4 mb-4">
+                    <p style={{ width: 40, fontSize: 20 }}>{index + 1}</p>
+                    <Image style={{ borderRadius: 10 }} src={album_image} alt="" width={100} height={100} quality={100} />
+                    <div>
+                      <p style={{ fontSize: 20 }}>{a.name}</p>
+                      <p style={{ fontSize: 13, maxWidth: 400, color: "#FFFFFF", opacity: 0.5 }}>{a.description}</p>
+                    </div>
+                    <Button onPress={() => {
+                      window.open(a.external_urls.spotify, '_blank', 'noopener,noreferrer')
+                    }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#1db954' }}>
+                      <SpotifyLogo></SpotifyLogo>
+
+                    </Button>
+                    {!(favoritesPlaylists && favoritesPlaylists.some((e) => e.data_id == a.id)) ?
+                      <Tooltip color="foreground" content={`Add in Bookmark`}>
+                        <Button onPress={() => {
+                          addUserFavorite(a.type, a, a.id)
+                        }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
+                          <BookmarksDisabled></BookmarksDisabled>
+
+                        </Button>
+                      </Tooltip> :
+                      <Tooltip color="foreground" content={`Remove from Bookmark`}>
+                        <Button onPress={() => {
+                          removeUserFavorite(a.type, a.id)
+                        }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
+                          <Bookmarks></Bookmarks>
+
+                        </Button>
+                      </Tooltip>
+                    }
+
+                  </li>
+                )
+              })}
               <p style={{ fontSize: 40, fontWeight: 1000 }}> {'Saved Artist'}</p>
               <br />
+              <ul className="list-none p-0">
+                {favoritesArtists && favoritesArtists.map((aa: SpotifyFavorite, index) => {
+                  var a: SpotifyArtist = aa.data;
+                  var artist_image = '';
+                  if (a.images.length > 0) {
+                    var image = a.images[0];
+                    if (image) {
+                      artist_image = image.url;
+                    }
+                  }
+
+                  return (
+                    <li key={index} className="row flex items-center gap-4 mb-4">
+                      <p style={{ width: 40, fontSize: 20 }}>{index + 1}</p>
+                      <Image style={{ borderRadius: 10 }} src={artist_image} alt="" width={100} height={100} quality={100} />
+                      <Tooltip color="foreground" content={`This artist was ${a.popularity}% famous`}>
+                        <div>
+                          <p style={{ fontSize: 20 }}>{a.name}</p>
+                          <div style={{ backgroundColor: "#1db954", borderRadius: 5, paddingLeft: 10, paddingRight: 10, width: 'fit-content' }}>
+                            <p style={{ fontSize: 15 }}>{a.popularity}%</p>
+                          </div>
+                          <p style={{ fontSize: 15 }}>Fans {a.followers.total}</p>
+                        </div>
+                      </Tooltip>
+                      <Tooltip color="foreground" content={`Open in Spotify`}>
+                        <Button onPress={() => {
+                          window.open(a.external_urls.spotify, '_blank', 'noopener,noreferrer')
+                        }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#1db954' }}>
+                          <SpotifyLogo></SpotifyLogo>
+
+                        </Button>
+                      </Tooltip>
+
+                      {!(favoritesArtists && favoritesArtists.some((e) => e.data_id == a.id)) ?
+                        <Tooltip color="foreground" content={`Add in Bookmark`}>
+                          <Button onPress={() => {
+                            addUserFavorite(a.type, a, a.id);
+                          }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
+                            <BookmarksDisabled></BookmarksDisabled>
+
+                          </Button>
+                        </Tooltip> :
+                        <Tooltip color="foreground" content={`Remove from Bookmark`}>
+                          <Button onPress={() => {
+                            removeUserFavorite(a.type, a.id);
+                          }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
+                            <Bookmarks></Bookmarks>
+
+                          </Button>
+                        </Tooltip>
+                      }
+                    </li>
+
+                  )
+                })}
+              </ul>
             </div>
           </>
         )
