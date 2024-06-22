@@ -1,113 +1,552 @@
+'use client';
+
+import { useState, useEffect } from "react";
+import { Navbar, NavbarBrand, NavbarContent, NavbarItem } from "@nextui-org/navbar";
 import Image from "next/image";
+import { SpotifyLogo } from "./SpotifyLogo.jsx";
+import { Bookmarks } from "./Bookmarks.jsx";
+import { BookmarksDisabled } from "./BookmarksDisabled.jsx";
+import Link from "next/link";
+import { Button } from "@nextui-org/button";
+import loginAnimated from '../assets/Animation - 1718996481802.gif';
+import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@nextui-org/modal";
+import { Tooltip } from "@nextui-org/tooltip";
 
 export default function Home() {
+  const [selectedItem, setSelectedItem] = useState("New Albums");
+  const [spotifyUser, setSpotifyUser] = useState<SpotifyUser>();
+  const [newAlbums, setNewAlbums] = useState<Array<SpotifyAlbum>>();
+  const [featuredPlayLists, setFeaturedPlayLists] = useState<SpotifyPlaylists>();
+  const [recommendedArtists, setRecommendedArtists] = useState<SpotifyArtist[]>();
+
+  const clientId = "06ee099d9e294e14ada8c5975be4e183";
+  const redirectUri = "http://localhost:3000/"; // This should match the URI registered in Spotify Dashboard
+  const scopes = [
+    "user-read-private",
+    "user-read-email",
+    "user-top-read",
+    "user-follow-read"
+    // Add any other scopes you need
+  ];
+  var spotify_access_token: string | null;
+
+  const loadAccessToken = async () => {
+    spotify_access_token = localStorage.getItem("spotify_access_token")
+  }
+
+  const login = () => {
+    const authUrl = `https://accounts.spotify.com/authorize?response_type=token&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes.join(" "))}`;
+    window.location.href = authUrl;
+  };
+
+  const logout = () => {
+    localStorage.removeItem("spotify_access_token");
+    window.location.href = "";
+  }
+
+  const extractTokenFromUrl = () => {
+    const hash = window.location.hash;
+    if (!hash) return null;
+
+    const params = new URLSearchParams(hash.substring(1));
+    return params.get("access_token");
+  };
+
+  const saveToken = (token: string) => {
+    localStorage.setItem("spotify_access_token", token);
+  };
+
+  const handleLoginRedirect = () => {
+    const token = extractTokenFromUrl();
+    if (token) {
+      console.log(token)
+      const payload = { 'access_token': token };
+
+      // Clear the hash
+      window.location.hash = "";
+
+      saveToken(token);
+
+      // Construct the request options
+      const requestOptions = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      };
+
+      // Send the POST request
+      fetch('http://localhost:8000/login', requestOptions)
+        .then(response => response.json())
+        .then(data => console.log(data))
+        .catch(error => console.error('Error:', error));
+    }
+  };
+  const fetchSpotifyUserInfo = async () => {
+
+    if (spotify_access_token) {
+      try {
+        const response = await fetch('https://api.spotify.com/v1/me', {
+          headers: {
+            'Authorization': 'Bearer ' + spotify_access_token,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Request failed: ' + response.status);
+        }
+
+        const data = await response.json();
+        // console.log(data); // Here you have the user's Spotify profile information
+        setSpotifyUser(data);
+      } catch (error) {
+        console.error('Error fetching Spotify user info:', error);
+      }
+    } else {
+      console.log('No Spotify access token found.');
+    }
+  };
+
+  const fetchNewReleaseAlbums = async () => {
+    const url = 'https://api.spotify.com/v1/browse/new-releases';
+
+    // Set up the request options, including the Authorization header
+    const options = {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${spotify_access_token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    // Perform the fetch request
+    fetch(url, options)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.json();
+      })
+      .then(data => {
+        setNewAlbums(data['albums']['items']);
+      })
+      .catch(error => {
+        console.error('There was a problem with your fetch operation:', error);
+      });
+  }
+
+  const fetchFeaturedPlaylists = async () => {
+    const limit = 20;
+    const offset = 5;
+    const url = ` https://api.spotify.com/v1/browse/featured-playlists?limit=${limit}&offset=${offset}`;
+
+    // Set up the request options, including the Authorization header
+    const options = {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${spotify_access_token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    // Perform the fetch request
+    fetch(url, options)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        return response.json();
+      })
+      .then(data => {
+        // console.log(data);
+        setFeaturedPlayLists(data);
+      })
+      .catch(error => {
+        console.error('There was a problem with your fetch operation:', error);
+      });
+  }
+  const getFollowedArtists = async () => {
+    const limit = 10;
+    // Corrected the query parameter for limit from $limit to limit
+    const url = `https://api.spotify.com/v1/me/following?type=artist&limit=${limit}`;
+
+    const options = {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${spotify_access_token}`,
+        'Content-Type': 'application/json'
+      }
+    };
+
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        throw new Error('Network response was not ok');
+      }
+      const data = await response.json();
+      // Assuming the structure of the response has artists.items
+      return data.artists.items;
+    } catch (error) {
+      console.error('There was a problem with your fetch operation:', error);
+      return []; // Return an empty array in case of error
+    }
+  };
+
+  const fetchRecommendedArtists = async () => {
+
+    const followed_artists: SpotifyArtist[] = await getFollowedArtists();
+    const followed_artists_ids = followed_artists.map(e => e.id);
+    var recommendedArtistsResult: SpotifyArtist[] = [];
+    console.log(`Here are the followed artists:`,);
+    for (let index = 0; index < followed_artists_ids.length; index++) {
+      const artists_id = followed_artists_ids[index];
+      const url = `https://api.spotify.com/v1/artists/${artists_id}/related-artists`;
+
+      const options = {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${spotify_access_token}`,
+          'Content-Type': 'application/json'
+        }
+      };
+
+      try {
+        const response = await fetch(url, options);
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+        const data: SpotifyArtistsData = await response.json();
+        console.log('Recommended Artists:', data);
+        recommendedArtistsResult = [...recommendedArtistsResult, ...data.artists];
+      } catch (error) {
+        console.error('There was a problem with your fetch operation:', error);
+      }
+
+    }
+    setRecommendedArtists(recommendedArtistsResult);
+  };
+
+  useEffect(() => {
+    loadAccessToken();
+    fetchSpotifyUserInfo();
+    handleLoginRedirect();
+
+
+  }, []);
+
+  useEffect(() => {
+    if (!newAlbums)
+      fetchNewReleaseAlbums();
+    if (!featuredPlayLists)
+      fetchFeaturedPlaylists();
+    if (!recommendedArtists)
+      fetchRecommendedArtists();
+
+  }, [selectedItem])
+
+  const renderContent = () => {
+
+
+    switch (selectedItem) {
+      case "New Albums":
+        if (!newAlbums) return (<></>);
+        const a = 20;
+        return (
+          <>
+            <p style={{ fontSize: 40, fontWeight: 1000 }}>Top {a} albums</p>
+            <br />
+            <ul className="list-none p-0">
+              {newAlbums.map((a, index) => {
+                var album_image = '';
+                var artists_name = '';
+                if (a.images.length > 0) {
+                  var image = a.images[0];
+                  if (image) {
+                    album_image = image.url;
+                  }
+                }
+
+                if (a.artists.length > 0) {
+                  var artists = a.artists;
+
+                  artists_name = artists.map(c => c.name).join(', ').toString();
+
+                }
+
+
+                return (
+                  <li key={index} className="row flex items-center gap-4 mb-4">
+                    <p style={{ width: 40, fontSize: 20 }}>{index + 1}</p>
+                    <Image style={{ borderRadius: 10 }} src={album_image} alt="" width={100} height={100} quality={100} />
+                    <div>
+                      <p style={{ fontSize: 20 }}>{a.name}</p>
+                      <p style={{ fontSize: 15 }}>{artists_name}</p>
+                    </div>
+                    <Button onPress={() => {
+                      window.open(a.external_urls.spotify, '_blank', 'noopener,noreferrer')
+                    }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#1db954' }}>
+                      <SpotifyLogo></SpotifyLogo>
+
+                    </Button>
+                    {(false) ?
+                      <Tooltip color="foreground" content={`Add in Bookmark`}>
+                        <Button onPress={() => {
+
+                        }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
+                          <BookmarksDisabled></BookmarksDisabled>
+
+                        </Button>
+                      </Tooltip> :
+                      <Tooltip color="foreground" content={`Remove from Bookmark`}>
+                        <Button onPress={() => {
+
+                        }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
+                          <Bookmarks></Bookmarks>
+
+                        </Button>
+                      </Tooltip>
+                    }
+                  </li>
+                )
+              })}
+            </ul >
+          </>
+        );
+      case "Featured playlists":
+        if (!featuredPlayLists) return (<></>);
+        var featured_name = featuredPlayLists.message;
+        return (
+          <>
+            <p style={{ fontSize: 40, fontWeight: 1000 }}> {featured_name}</p>
+            <br />
+            <ul className="list-none p-0">
+              {featuredPlayLists.playlists.items.map((a, index) => {
+                var album_image = '';
+                if (a.images.length > 0) {
+                  var image = a.images[0];
+                  if (image) {
+                    album_image = image.url;
+                  }
+                }
+
+                return (
+                  <li key={index} className="row flex items-center gap-4 mb-4">
+                    <p style={{ width: 40, fontSize: 20 }}>{index + 1}</p>
+                    <Image style={{ borderRadius: 10 }} src={album_image} alt="" width={100} height={100} quality={100} />
+                    <div>
+                      <p style={{ fontSize: 20 }}>{a.name}</p>
+                      <p style={{ fontSize: 13, maxWidth: 400, color: "#FFFFFF", opacity: 0.5 }}>{a.description}</p>
+                    </div>
+                    <Button onPress={() => {
+                      window.open(a.external_urls.spotify, '_blank', 'noopener,noreferrer')
+                    }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#1db954' }}>
+                      <SpotifyLogo></SpotifyLogo>
+
+                    </Button>
+                    {(false) ?
+                      <Tooltip color="foreground" content={`Add in Bookmark`}>
+                        <Button onPress={() => {
+
+                        }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
+                          <BookmarksDisabled></BookmarksDisabled>
+
+                        </Button>
+                      </Tooltip> :
+                      <Tooltip color="foreground" content={`Remove from Bookmark`}>
+                        <Button onPress={() => {
+
+                        }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
+                          <Bookmarks></Bookmarks>
+
+                        </Button>
+                      </Tooltip>
+                    }
+
+                  </li>
+                )
+              })}
+            </ul>
+          </>
+        );
+      case "Recommanded Artists": // user top items
+        if (!recommendedArtists) return (<></>);
+
+        return (
+          <>
+            <p style={{ fontSize: 40, fontWeight: 1000 }}> {'Recommanded artists'}</p>
+            <br />
+            <ul className="list-none p-0">
+              {recommendedArtists.map((a, index) => {
+                var artist_image = '';
+                if (a.images.length > 0) {
+                  var image = a.images[0];
+                  if (image) {
+                    artist_image = image.url;
+                  }
+                }
+
+                return (
+                  <li key={index} className="row flex items-center gap-4 mb-4">
+                    <p style={{ width: 40, fontSize: 20 }}>{index + 1}</p>
+                    <Image style={{ borderRadius: 10 }} src={artist_image} alt="" width={100} height={100} quality={100} />
+                    <Tooltip color="foreground" content={`This artist was ${a.popularity}% famous`}>
+                      <div>
+                        <p style={{ fontSize: 20 }}>{a.name}</p>
+                        <div style={{ backgroundColor: "#1db954", borderRadius: 5, paddingLeft: 10, paddingRight: 10, width: 'fit-content' }}>
+                          <p style={{ fontSize: 15 }}>{a.popularity}%</p>
+                        </div>
+                        <p style={{ fontSize: 15 }}>Fans {a.followers.total}</p>
+                      </div>
+                    </Tooltip>
+                    <Tooltip color="foreground" content={`Open in Spotify`}>
+                      <Button onPress={() => {
+                        window.open(a.external_urls.spotify, '_blank', 'noopener,noreferrer')
+                      }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#1db954' }}>
+                        <SpotifyLogo></SpotifyLogo>
+
+                      </Button>
+                    </Tooltip>
+
+                    {(false) ?
+                      <Tooltip color="foreground" content={`Add in Bookmark`}>
+                        <Button onPress={() => {
+
+                        }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
+                          <BookmarksDisabled></BookmarksDisabled>
+
+                        </Button>
+                      </Tooltip> :
+                      <Tooltip color="foreground" content={`Remove from Bookmark`}>
+                        <Button onPress={() => {
+
+                        }} isIconOnly color="warning" variant="faded" aria-label="Play in Spotify" style={{ backgroundColor: '#000000', borderColor: '#000000' }}>
+                          <Bookmarks></Bookmarks>
+
+                        </Button>
+                      </Tooltip>
+                    }
+                  </li>
+
+                )
+              })}
+            </ul>
+          </>
+        );
+
+      case "Bookmarks":
+        return (
+          <>
+            <div>
+              <p style={{ fontSize: 40, fontWeight: 1000 }}> {'Saved Albums'}</p>
+              <br />
+              <p style={{ fontSize: 40, fontWeight: 1000 }}> {'Saved Playlist'}</p>
+              <br />
+              <p style={{ fontSize: 40, fontWeight: 1000 }}> {'Saved Artist'}</p>
+              <br />
+            </div>
+          </>
+        )
+      default:
+        return null;
+    }
+  };
+
+
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">app/page.tsx</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:size-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{" "}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
-        </div>
-      </div>
 
-      <div className="relative z-[-1] flex place-items-center before:absolute before:h-[300px] before:w-full before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-full after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 sm:before:w-[480px] sm:after:w-[240px] before:lg:h-[360px]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
 
-      <div className="mb-32 grid text-center lg:mb-0 lg:w-full lg:max-w-5xl lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Docs{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
+    <main className="flex min-h-screen flex-col items-center p-24" style={{ backgroundColor: '#000000', color: 'white' }}>
 
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Learn{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
+      {(!spotifyUser) && (
+        <Modal isOpen={true} onOpenChange={() => { }} style={{ backgroundColor: '#000000', color: '#FFFFFF' }} hideCloseButton={true}>
+          <ModalContent>
+            {(onClose) => (
+              <>
+                <ModalHeader className="flex flex-col gap-1">Welcome,</ModalHeader>
+                <ModalBody>
+                  <img src={loginAnimated.src} width={100} height={100}></img>
 
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Templates{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-sm opacity-50">
-            Explore starter templates for Next.js.
-          </p>
-        </a>
+                  <p>
+                    You need to login Spotify to use this website
+                  </p>
+                </ModalBody>
+                <ModalFooter>
 
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className="mb-3 text-2xl font-semibold">
-            Deploy{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className="m-0 max-w-[30ch] text-balance text-sm opacity-50">
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
+                  <Button onClick={login} style={{ backgroundColor: '#1d703a', color: '#1db954', fontWeight: 800 }}>Login</Button>
+                </ModalFooter>
+              </>
+            )}
+          </ModalContent>
+        </Modal>
+
+      )}
+
+
+      <Navbar
+        style={{ backgroundColor: 'black' }}
+        classNames={{
+          item: [
+            "flex",
+            "relative",
+            "h-full",
+            "items-center",
+            "data-[active=true]:after:content-['']",
+            "data-[active=true]:after:absolute",
+            "data-[active=true]:after:bottom-0",
+            "data-[active=true]:after:left-0",
+            "data-[active=true]:after:right-0",
+            "data-[active=true]:after:h-[2px]",
+            "data-[active=true]:after:rounded-[2px]",
+            "data-[active=true]:after:bg-primary",
+          ],
+        }}
+      >
+        <NavbarBrand>
+          <p className="font-bold text-inherit" style={{ color: "#1db954", fontSize: 20 }}>Spotify</p>
+          <p className="font-bold text-inherit" style={{ fontSize: 20 }}>-Top</p>
+        </NavbarBrand>
+
+        <NavbarContent className="hidden sm:flex gap-4" justify="center">
+          <NavbarItem>
+            <Link href="#" onClick={() => setSelectedItem("New Albums")} style={(selectedItem == 'New Albums') ? { color: '#1db954', fontWeight: '800' } : {}}>
+              New Albums
+            </Link>
+          </NavbarItem>
+          <NavbarItem>
+            <Link href="#" onClick={() => setSelectedItem("Featured playlists")} style={(selectedItem == 'Featured playlists') ? { color: '#1db954', fontWeight: '800' } : {}}>
+              Featured playlists
+            </Link>
+          </NavbarItem>
+          <NavbarItem>
+            <Link href="#" onClick={() => setSelectedItem("Recommanded Artists")} style={(selectedItem == 'Recommanded Artists') ? { color: '#1db954', fontWeight: '800' } : {}}>
+              Recommanded Artists
+            </Link>
+          </NavbarItem>
+          <NavbarItem>
+            <Link href="#" onClick={() => setSelectedItem("Bookmarks")} style={(selectedItem == 'Bookmarks') ? { color: '#1db954', fontWeight: '800' } : {}}>
+              Bookmarks
+            </Link>
+          </NavbarItem>
+          {spotifyUser ?
+            <Tooltip color="foreground" content={`Logout from ${spotifyUser.display_name}`}>
+              <NavbarItem>
+                <Button style={{ fontWeight: 800, backgroundColor: '#1d703a', color: '#1db954' }} href="#" onClick={() => logout()} >
+                  {spotifyUser.display_name}
+                </Button>
+              </NavbarItem>
+            </Tooltip>
+            :
+            <NavbarItem>
+              <Link href="#" onClick={() => login()} color="foreground">
+                Login
+              </Link>
+            </NavbarItem>
+          }
+        </NavbarContent>
+      </Navbar>
+
+      {/* body */}
+      <br />
+      {renderContent()}
     </main>
   );
 }
