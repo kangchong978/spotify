@@ -11,6 +11,7 @@ import { Button } from "@nextui-org/button";
 import loginAnimated from '../assets/Animation - 1718996481802.gif';
 import { Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from "@nextui-org/modal";
 import { Tooltip } from "@nextui-org/tooltip";
+import { Spotify } from "react-spotify-embed";
 
 export default function Home() {
   const [selectedItem, setSelectedItem] = useState("New Albums");
@@ -21,6 +22,8 @@ export default function Home() {
   const [favoritesAlbums, setFavoritesAlbums] = useState<SpotifyFavorite[]>();
   const [favoritesPlaylists, setFavoritesPlaylists] = useState<SpotifyFavorite[]>();
   const [favoritesArtists, setFavoritesArtists] = useState<SpotifyFavorite[]>();
+  const [openPlayer, setOpenPlayer] = useState<boolean>(false);
+  const [playerLink, setPlayerLink] = useState<string>();
 
   const clientId = "06ee099d9e294e14ada8c5975be4e183";
   const redirectUri = "http://localhost:3000/"; // This should match the URI registered in Spotify Dashboard
@@ -408,7 +411,12 @@ export default function Home() {
 
                         </Button>
                       </Tooltip>
+
                     }
+
+                    <Tooltip color="foreground" content={`Open in player`}>
+                      <Button style={{ borderRadius: 999, backgroundColor: '#1db954', fontWeight: 500, height: 30 }} onClick={() => { setPlayerLink(a.external_urls.spotify); setOpenPlayer(true) }} >Play</Button>
+                    </Tooltip>
                   </li>
                 )
               })}
@@ -463,8 +471,11 @@ export default function Home() {
 
                         </Button>
                       </Tooltip>
-                    }
 
+                    }
+                    <Tooltip color="foreground" content={`Open in player`}>
+                      <Button style={{ borderRadius: 999, backgroundColor: '#1db954', fontWeight: 500, height: 30 }} onClick={() => { setPlayerLink(a.external_urls.spotify); setOpenPlayer(true) }} >Play</Button>
+                    </Tooltip>
                   </li>
                 )
               })}
@@ -528,6 +539,9 @@ export default function Home() {
                         </Button>
                       </Tooltip>
                     }
+                    <Tooltip color="foreground" content={`Open in player`}>
+                      <Button style={{ borderRadius: 999, backgroundColor: '#1db954', fontWeight: 500, height: 30 }} onClick={() => { setPlayerLink(a.external_urls.spotify); setOpenPlayer(true) }} >Play</Button>
+                    </Tooltip>
                   </li>
 
                 )
@@ -593,6 +607,9 @@ export default function Home() {
                         </Button>
                       </Tooltip>
                     }
+                    <Tooltip color="foreground" content={`Open in player`}>
+                      <Button style={{ borderRadius: 999, backgroundColor: '#1db954', fontWeight: 500, height: 30 }} onClick={() => { setPlayerLink(a.external_urls.spotify); setOpenPlayer(true) }} >Play</Button>
+                    </Tooltip>
                   </li>
                 )
               })}
@@ -640,6 +657,9 @@ export default function Home() {
                         </Button>
                       </Tooltip>
                     }
+                    <Tooltip color="foreground" content={`Open in player`}>
+                      <Button style={{ borderRadius: 999, backgroundColor: '#1db954', fontWeight: 500, height: 30 }} onClick={() => { setPlayerLink(a.external_urls.spotify); setOpenPlayer(true) }} >Play</Button>
+                    </Tooltip>
 
                   </li>
                 )
@@ -697,6 +717,9 @@ export default function Home() {
                           </Button>
                         </Tooltip>
                       }
+                      <Tooltip color="foreground" content={`Open in player`}>
+                        <Button style={{ borderRadius: 999, backgroundColor: '#1db954', fontWeight: 500, height: 30 }} onClick={() => { setPlayerLink(a.external_urls.spotify); setOpenPlayer(true) }} >Play</Button>
+                      </Tooltip>
                     </li>
 
                   )
@@ -717,29 +740,31 @@ export default function Home() {
 
     <main className="flex min-h-screen flex-col items-center p-24" style={{ backgroundColor: '#000000', color: 'white' }}>
 
-      {(!spotifyUser) && (
-        <Modal isOpen={true} onOpenChange={() => { }} style={{ backgroundColor: '#000000', color: '#FFFFFF' }} hideCloseButton={true}>
-          <ModalContent>
-            {(onClose) => (
-              <>
-                <ModalHeader className="flex flex-col gap-1">Welcome,</ModalHeader>
-                <ModalBody>
-                  <img src={loginAnimated.src} width={100} height={100}></img>
 
-                  <p>
-                    You need to login Spotify to use this website
-                  </p>
-                </ModalBody>
-                <ModalFooter>
+      <Modal isOpen={!spotifyUser ? true : false} onOpenChange={() => { }} style={{ backgroundColor: '#000000', color: '#FFFFFF' }} hideCloseButton={true}>
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-1">Welcome,</ModalHeader>
+              <ModalBody>
+                <img src={loginAnimated.src} width={100} height={100}></img>
 
-                  <Button onClick={login} style={{ backgroundColor: '#1d703a', color: '#1db954', fontWeight: 800 }}>Login</Button>
-                </ModalFooter>
-              </>
-            )}
-          </ModalContent>
-        </Modal>
+                <p>
+                  You need to login Spotify to use this website
+                </p>
+              </ModalBody>
+              <ModalFooter>
 
-      )}
+                <Button onClick={login} style={{ backgroundColor: '#1d703a', color: '#1db954', fontWeight: 800 }}>Login</Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
+      {openPlayer && playerLink != undefined &&
+        <Spotify wide style={{ position: 'fixed', zIndex: 1, bottom: 0, width: 400, margin: 10 }} link={playerLink!} />
+      }
 
 
       <Navbar
